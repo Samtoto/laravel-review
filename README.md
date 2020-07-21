@@ -117,3 +117,159 @@ class Foo ()
     }
 }
 ```
+## 回到 `/vendor/composer/autoload_real.php`
+```php
+        // ...
+        if ($useStaticLoader) {
+            require_once __DIR__ . '/autoload_static.php';
+
+            call_user_func(\Composer\Autoload\ComposerStaticInit53e7e9fbc7f3b93c224f3bd5f4f6ec3e::getInitializer($loader));
+        } else {
+        // 没有运行 折叠了。
+        // ...
+        }
+        // 运行到此处了
+        // 调用了 register 方法。
+        $loader->register(true);
+```
+
+## 进入 `vendor/composer/ClassLoader.php`
+```php
+<?php
+namespace Composer\Autoload;
+
+class ClassLoader
+{
+    // ... 折叠
+    /**
+     * Registers this instance as an autoloader.
+     *
+     * @param bool $prepend Whether to prepend the autoloader or not
+     */
+    // 调用了该方法 注册了 ClassLoader 类，和 loadClass 方法 
+    public function register($prepend = false)
+    {
+        spl_autoload_register(array($this, 'loadClass'), true, $prepend);
+    }
+    
+    /**
+     * Loads the given class or interface.
+     *
+     * @param  string    $class The name of the class
+     * @return bool|null True if loaded, null otherwise
+     */
+    // 该方法就是根据 $class 查找该变量对应的文件，并引入。
+    public function loadClass($class)
+    {
+        if ($file = $this->findFile($class)) {
+            includeFile($file);
+
+            return true;
+        }
+    }
+    
+    // ... 折叠
+}
+
+
+/**
+ * Scope isolated include.
+ *
+ * Prevents access to $this/self from included files.
+ */
+function includeFile($file)
+{
+    include $file;
+}
+
+```
+
+## 回到 `/vendor/composer/autoload_real.php`
+```php
+        // ... 折叠
+        $loader->register(true);
+
+        if ($useStaticLoader) {
+            // 为 $includeFiles 赋值，此时它的值为 ComposerStaticInit::$files 的值
+            $includeFiles = Composer\Autoload\ComposerStaticInit53e7e9fbc7f3b93c224f3bd5f4f6ec3e::$files;
+        } else {
+            // ... 折叠
+        }
+        foreach ($includeFiles as $fileIdentifier => $file) {
+            // 遍历 ComposerStaticInit::$files 调用下面的 composerRequire 方法，目地是将 $files 内的文件全部 require
+            // 并且定义一个全局变量，该全局变量，设置为 true
+            // 以防止重复引用？
+            composerRequire53e7e9fbc7f3b93c224f3bd5f4f6ec3e($fileIdentifier, $file);
+        }
+        // 返回 $loader
+
+        return $loader;
+    }
+}
+
+function composerRequire53e7e9fbc7f3b93c224f3bd5f4f6ec3e($fileIdentifier, $file)
+{
+    if (empty($GLOBALS['__composer_autoload_files'][$fileIdentifier])) {
+        require $file;
+
+        $GLOBALS['__composer_autoload_files'][$fileIdentifier] = true;
+    }
+}
+```
+此时 autoload.php 运行完毕了，回到 index.php
+
+## 回到 `/public/index.php`
+```php
+<?php
+
+define('LARAVEL_START', microtime(true));
+require __DIR__.'/../vendor/autoload.php';
+
+// 运行到此处了。进入该文件
+$app = require_once __DIR__.'/../bootstrap/app.php';
+
+// ... 折叠
+```
+
+## 进入 `/bootstrap/app.php`
+```php
+<?php
+
+/*
+|--------------------------------------------------------------------------
+| Create The Application
+|--------------------------------------------------------------------------
+|
+| The first thing we will do is create a new Laravel application instance
+| which serves as the "glue" for all the components of Laravel, and is
+| the IoC container for the system binding all of the various parts.
+|
+*/
+// 这里 new 了一个类，进入该文件看看
+$app = new Illuminate\Foundation\Application(
+    $_ENV['APP_BASE_PATH'] ?? dirname(__DIR__)
+);
+// ... 折叠
+```
+这里有个 PHP 7.0 引入的新运算符 `??`
+[参考文档](https://www.php.net/manual/en/language.operators.comparison.php#language.operators.comparison.coalesce)
+```php
+<?php
+// Example usage for: Null Coalesce Operator
+$action = $_POST['action'] ?? 'default';
+
+// The above is identical to this if/else statement
+if (isset($_POST['action'])) {
+    $action = $_POST['action'];
+} else {
+    $action = 'default';
+}
+
+?>
+```
+所以 这里传入的值始是 `dirname(__DIR__)` 也就是` laravel 源码`的根目录
+```php
+$app = new Illuminate\Foundation\Application(
+    $_ENV['APP_BASE_PATH'] ?? dirname(__DIR__)
+);
+```
